@@ -310,7 +310,7 @@ library
       Yi.UI.Vty
     build-depends:
       unix-compat >=0.1 && <0.5,
-      vty >= 4.7.0.0 && <5
+      vty >= 5.0.0 && < 6
     cpp-options: -DFRONTEND_VTY
 
   if flag (scion)
