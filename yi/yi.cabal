@@ -140,6 +140,7 @@ library
     Yi.Lexer.ObjectiveC
     Yi.Lexer.Cplusplus
     Yi.Lexer.Haskell
+    Yi.Lexer.HTML
     Yi.Lexer.JavaScript
     Yi.Lexer.Java
     Yi.Lexer.JSON
@@ -163,6 +164,7 @@ library
     Yi.Mode.Compilation
     Yi.Mode.Haskell
     Yi.Mode.Haskell.Dollarify
+    Yi.Mode.HTML
     Yi.Mode.IReader
     Yi.Mode.Interactive
     Yi.Mode.JavaScript
@@ -185,6 +187,7 @@ library
     Yi.Syntax
     Yi.Syntax.Driver
     Yi.Syntax.Haskell
+    Yi.Syntax.HTML
     Yi.Syntax.JavaScript
     Yi.Syntax.Latex
     Yi.Syntax.Layout

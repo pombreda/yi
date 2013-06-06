@@ -36,6 +36,7 @@ import qualified Yi.Keymap.Emacs  as Emacs
 import qualified Yi.Keymap.Vim  as Vim
 import qualified Yi.Mode.Abella as Abella
 import qualified Yi.Mode.Haskell as Haskell
+import qualified Yi.Mode.HTML as HTML
 import qualified Yi.Mode.JavaScript as JS
 import qualified Yi.Mode.Latex as Latex
 import qualified Yi.Interact as I
@@ -172,6 +173,7 @@ defaultConfig =
                         AnyMode ireaderMode,
                         AnyMode svnCommitMode,
                         AnyMode gitCommitMode,
+                        AnyMode HTML.htmlMode,
                         AnyMode whitespaceMode,
                         AnyMode fundamentalMode]
          , debugMode = False
