@@ -19,53 +19,34 @@ import Yi.Prelude hiding ( (<>) )
 import Data.Monoid
 
 type TT = Tok Token
-type Tree t = [Item t]
-data Item t = SelfTag t t [Attr t] t t
+data Tree t = SelfTag t t [Attr t] t t
             | OpenTag t t [Attr t] t
             | CloseTag t t t t
+            | ProperTag (Tree t) [Tree t] (Tree t)
+            | MismatchedTag (Tree t) [Tree t] (Tree t)
             | Comment t
             | DocType t
             | TextNode t
+            | Document [Tree t]
             | Error [t]
             deriving (Show, Foldable)
 
 data Attr t = SimpleAttribute t
             | ValueAttribute t t t
             deriving (Show, Foldable)
--- 
--- data Item t = SelfTag t t [Tree t] t t -- ^ open, name, attrs, slash, close
---             | OpenTag t t [Tree t] t -- ^ open, name, attrs, close
---             | CloseTag t t t t -- ^ open, slash, name, close
---             | ProperTag (Tree t) [Tree t] (Tree t) -- ^ open tag, children, close tag
---             | MismatchedTag (Tree t) [Tree t] t
---             | Comment t [t] t -- ^ open, content, close
---             | DocType t t [t] t -- ^ open, bang, contents, close
---             | SimpleAttribute t -- ^ attr name
---             | ValueAttribute t t t -- ^ attr name, =, attr value
---             | TextNode [t] -- ^ sequence of text node contents
---             | Document [Tree t]
---             | Error [t]
---             deriving (Show, Foldable)
 
-instance IsTree Item where
-  subtrees _ = []
-  {-
+instance IsTree Tree where
   emptyNode = Document []
-  uniplate (SelfTag o n attrs s c) =
-    (attrs, \attrs' -> SelfTag o n attrs' s c)
-  uniplate (OpenTag o n attrs c) =
-    (attrs, \attrs' -> OpenTag o n attrs' c)
-  uniplate (Document ts) =
-    (ts, Document)
-  uniplate (ProperTag o t c) =
-    (o:c:t, \(o':c':t') -> ProperTag o' t' c')
-  uniplate (MismatchedTag o t c) =
-    (o:t, \(o':t') -> MismatchedTag o' t' c)
+  uniplate (Document ts) = (ts, Document)
+  uniplate (ProperTag t0 items t1) =
+    (t0 : t1 : items, \(t0':t1':items') -> ProperTag t0' items' t1')
+  uniplate (MismatchedTag t0 items t1) =
+    (t0 : t1 : items, \(t0':t1':items') -> MismatchedTag t0' items' t1')
   uniplate t = ([], const t)
--}
+
 
 parse :: P TT (Tree TT)
-parse = many pItem <* eof
+parse = pDocument <* eof
 
 sym :: (Eq t) => t -> Parser (Tok t) (Tok t)
 sym t = sym' (== t)
@@ -91,13 +72,16 @@ attrString _ = False
 errorTok (HTML.ErrorToken _) = True
 errorTok _ = False
 
-pItem :: P TT (Item TT)
-pItem = pTryTag
-    <|> pComment
-    <|> pError
-    <|> pTextNode
+pDocument :: P TT (Tree TT)
+pDocument = Document <$> many pItem
 
-pError :: P TT (Item TT)
+pItem :: P TT (Tree TT)
+pItem = pTagTree
+    <|> pComment
+    <|> pTextNode
+    <|> pError
+
+pError :: P TT (Tree TT)
 pError = Error <$> some (symbol (errorTok .tokT))
 
 pComment = Comment <$> symbol (comment . tokT)
@@ -108,7 +92,7 @@ pSpecial = symbol (special . tokT)
 pTextContent = symbol (textNode . tokT)
 pTagName = symbol (tagName . tokT)
 
-pTextNode :: P TT (Item TT)
+pTextNode :: P TT (Tree TT)
 pTextNode = do
   tok <- anyToken
   case tokT tok of
@@ -128,7 +112,22 @@ fromTT = tokT
 
 anyToken = symbol (const True . tokT)
 
-pTryTag :: P TT (Item TT)
+pTagTree :: P TT (Tree TT)
+pTagTree = do
+  t0 <- pTryTag
+  case t0 of
+    SelfTag _ _ _ _ _ -> return t0
+    OpenTag _ targetTag _ _ -> do
+      items <- many pItem
+      mCloseTag <- pTryTag
+      case mCloseTag of
+        CloseTag _ _ tname _
+          | tname == targetTag -> return $ ProperTag t0 items mCloseTag
+          | otherwise -> return $ MismatchedTag t0 items mCloseTag
+        _ -> fail "Mismatched tag 1"
+    _ -> fail "Mismatched tag 2"
+
+pTryTag :: P TT (Tree TT)
 pTryTag = do
   openT <- sym HTML.TagLeft
   nxt <- anyToken
@@ -156,18 +155,19 @@ pSimpleAttr = SimpleAttribute <$> symbol (attrName . tokT)
 pAttr = ValueAttribute <$> symbol (attrName . tokT) <*> sym HTML.Equals <*> symbol (attrString . tokT)
 
 getStrokes :: Tree TT -> Point -> Point -> Point -> [Stroke]
-getStrokes t0 point begin end = appEndo (foldMap go t0) []
+getStrokes t0 point begin end = appEndo (go t0) []
   where
-    go :: Item TT -> Endo [Stroke]
+    go :: Tree TT -> Endo [Stroke]
     go (TextNode t) = ss t
-    -- go (ProperTag o t c) = go o <> foldMap go t <> go c
-    -- go (MismatchedTag o t c) = go o <> foldMap go t <> errorStroke c
+    go (ProperTag o t c) = go o <> foldMap go t <> go c
+    go (MismatchedTag o t c) = go o <> foldMap go t <> go c -- foldMap (Endo . modStroke errorStroke) (go c)
     go (SelfTag o n atts s c) = ss o <> ss n <> foldMap goAttr atts <> ss s <> ss c
     go (OpenTag o n atts c) = ss o <> ss n <> foldMap goAttr atts <> ss c
     go (CloseTag o s n c) = ss o <> ss s <> ss n <> ss c
     go (Comment c) = ss c
     go (DocType dt) = asComment dt
     go (Error es) = foldMap errorStroke es
+    go (Document ts) = foldMap go ts
 
     goAttr (SimpleAttribute t) = ss t
     goAttr (ValueAttribute a e v) = ss a <> ss e <> ss v
